@@ -10,37 +10,30 @@ from bs4 import BeautifulSoup
 
 logging.getLogger().setLevel(logging.INFO)
 
-BASE_URL = 'https://yandex.ru/'
-
-CURRENCIES = {
-    'USD': 'usd',
-    'EUR': 'euro',
-    'USD MOEX': 'usd',
-    'EUR MOEX': 'euro',
-    'Нефть': 'oil'
-}
+BASE_URL = 'https://yandex.ru/pogoda/kaluga'
 
 def parse_yandex_page(page):
-    currency_blocks = page.findAll('div', {'class': 'inline-stocks__item'})
+    temp = page.findAll('span', {'class': 'temp__value'})[1].text
+    wind = page.find('span', {'class': 'wind-speed'}).text
+    humidity_press = page.findAll('div', {'class': 'term__value'})
+    humidity = humidity_press[3].text
+    pressure = humidity_press[4].text
 
-    currencies = []
-    for block in currency_blocks:
-        currency_utf8 = block.find('a', {'class': 'home-link'}).text
-        currency = unicodedata.normalize("NFKD", currency_utf8)
-        value = float(block.find('span', {
-            'class': 'inline-stocks__value_inner'
-        }).text.replace(',', '.'))
 
-        currencies.append((CURRENCIES[currency], value))
-    return currencies
+    metrics = []
+    metrics.append(('temperature', int(temp)))
+    metrics.append(('wind_speed', float(wind.replace(',', '.'))))
+    metrics.append(('humidity', int(humidity.replace('%', ''))))
+    metrics.append(('pressure', int(pressure.split()[0])))
+    return metrics
 
 
 GRAPHITE_HOST = 'graphite'
 
-def send_metrics(currencies):
-    sender = graphyte.Sender(GRAPHITE_HOST, prefix='currencies')
-    for currency in currencies:
-        sender.send(currency[0], currency[1])
+def send_metrics(metrics):
+    sender = graphyte.Sender(GRAPHITE_HOST, prefix='weather')
+    for metric in metrics:
+        sender.send(metric[0], metric[1])
 
 def main():
 
@@ -49,7 +42,7 @@ def main():
         desired_capabilities={'browserName': 'chrome', 'javascriptEnabled': True}
     )
 
-    driver.get('https://yandex.ru')
+    driver.get('https://yandex.ru/pogoda/kaluga')
     time.sleep(5)
     html = driver.page_source
     soup = BeautifulSoup(html, 'html.parser')
@@ -60,7 +53,7 @@ def main():
     driver.quit()
 
     logging.info('Accessed %s ..', BASE_URL)
-    logging.info('Page title: %s', driver.title)
+    logging.info('Metrics: %s', metric)
 
 if __name__ == '__main__':
     main()
